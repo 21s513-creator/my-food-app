@@ -1,0 +1,26 @@
+[
+    {
+        "name": "慢活輕食沙拉吧",
+        "transport": "walk",
+        "type": "healthy",
+        "price": "normal",
+        "rating": "4.3",
+        "ig_url": "#"
+    },
+    {
+        "name": "無名燒烤",
+        "transport": "walk",
+        "type": "fried",
+        "price": "normal",
+        "rating": "5.0",
+        "ig_url": "https://www.instagram.com/reels/DaZVmo9zeNM/"
+    },
+    {
+        "name": "大慶麵店",
+        "transport": "car",
+        "type": "noodle",
+        "price": "budget",
+        "rating": "5.0",
+        "ig_url": "#"
+    }
+]
