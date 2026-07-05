@@ -4,6 +4,10 @@ import os
 from fastapi import FastAPI
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel  # 👈 新增這一行
+import google.generativeai as genai
+
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_KEY)
 
 class Restaurant(BaseModel):
     name: str
@@ -73,36 +77,23 @@ def get_home():
             </div>
         </header>
 
-        <main class="flex-grow flex items-center justify-center p-4">
-            <div class="w-full max-w-md bg-white p-6 rounded-3xl border-4 border-black shadow-[8px_8px_0px_0px_rgba(0,0,0,1)]">
-                
-                <div class="mb-6">
-                    <label class="block text-sm font-black text-gray-700 mb-2">📍 第一步：選擇交通方式</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <button onclick="selectOption('transport', 'walk', this)" class="transport-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-sm bg-white hover:bg-gray-50 active:scale-95 transition-all">🚶 走路</button>
-                        <button onclick="selectOption('transport', 'bike', this)" class="transport-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-sm bg-white hover:bg-gray-50 active:scale-95 transition-all">🏍️ 騎車</button>
-                        <button onclick="selectOption('transport', 'car', this)" class="transport-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-sm bg-white hover:bg-gray-50 active:scale-95 transition-all">🚗 開車</button>
-                    </div>
-                </div>
+        <div class="bg-gray-50 border-4 border-black p-4 rounded-3xl shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] space-y-4">
+            <div>
+                <label class="block font-black text-sm text-gray-700 mb-1 flex justify-between">
+                    <span>💰 預算上限 (單人)</span>
+                    <span class="text-pink-600 font-black"><span id="price-val">300</span> 元</span>
+                </label>
+                <input type="range" id="price-slider" min="50" max="2000" value="300" step="50" 
+                       oninput="document.getElementById('price-val').innerText = this.value"
+                       class="w-full accent-black h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer">
+            </div>
 
-                <div class="mb-6">
-                    <label class="block text-sm font-black text-gray-700 mb-2">🍟 第二步：今天想吃哪類？</label>
-                    <div class="grid grid-cols-2 gap-2">
-                        <button onclick="selectOption('type', 'fried', this)" class="type-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-sm bg-white hover:bg-gray-50 active:scale-95 transition-all">🍟 罪惡炸物</button>
-                        <button onclick="selectOption('type', 'healthy', this)" class="type-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-sm bg-white hover:bg-gray-50 active:scale-95 transition-all">🥗 清淡健康</button>
-                        <button onclick="selectOption('type', 'vegie', this)" class="type-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-sm bg-white hover:bg-gray-50 active:scale-95 transition-all">🥦 素食主義</button>
-                        <button onclick="selectOption('type', 'noodle', this)" class="type-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-sm bg-white hover:bg-gray-50 active:scale-95 transition-all">🍜 麵食愛好</button>
-                    </div>
-                </div>
-
-                <div class="mb-6">
-                    <label class="block text-sm font-black text-gray-700 mb-2">💰 第三步：預算考量</label>
-                    <div class="grid grid-cols-3 gap-2">
-                        <button onclick="selectOption('price', 'budget', this)" class="price-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-xs bg-white hover:bg-gray-50 active:scale-95 transition-all">🪙 100元內</button>
-                        <button onclick="selectOption('price', 'normal', this)" class="price-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-xs bg-white hover:bg-gray-50 active:scale-95 transition-all">🍱 200元內</button>
-                        <button onclick="selectOption('price', 'luxury', this)" class="price-btn border-2 border-gray-300 py-3 rounded-2xl font-bold text-xs bg-white hover:bg-gray-50 active:scale-95 transition-all">💸 大餐500+</button>
-                    </div>
-                </div>
+            <div>
+                <label class="block font-black text-sm text-gray-700 mb-1">🤖 告訴 AI 你現在的心情或渴望</label>
+                <input type="text" id="ai-prompt" placeholder="💡 例如：好冷想喝熱湯、想吃辣、適合跟曖昧對象約會..." 
+                       class="w-full border-2 border-black p-3 rounded-xl font-bold text-sm focus:outline-none focus:bg-yellow-50 placeholder-gray-400">
+            </div>
+        </div>
 
                 <button onclick="startLottery()" class="w-full bg-blue-600 text-white py-4 rounded-2xl font-black text-lg shadow-md hover:bg-blue-700 active:scale-[0.98] transition-all mt-4 border-2 border-black shadow-[4px_4px_0px_0px_rgba(0,0,0,1)]">
                     🎰 決定就是你了！
@@ -190,35 +181,51 @@ def get_home():
             </div>
         </div>
         <script>
-            // ─── 抽籤邏輯區 ───
-            let selections = { transport: '', type: '', price: '' };
-
-            function selectOption(category, value, element) {
-                document.querySelectorAll('.' + category + '-btn').forEach(btn => {
-                    btn.classList.remove('active-btn');
-                });
-                element.classList.add('active-btn');
-                selections[category] = value;
-            }
-
+            // ─── 🤖 AI 智慧抽籤邏輯區 ───
             async function startLottery() {
-                if (!selections.transport || !selections.type || !selections.price) {
-                    alert('請先填滿三個關卡，再開始進行開獎唷！');
-                    return;
-                }
-                document.getElementById('result-card').classList.add('hidden');
-                document.getElementById('error-card').classList.add('hidden');
+                // 抓取網頁上最新的預算滑條金額與 AI 輸入框內容
+                const promptInput = document.getElementById('ai-prompt').value;
+                const priceLimit = document.getElementById('price-slider').value;
+                
+                const resultCard = document.getElementById('result-card');
+                const resName = document.getElementById('res-name');
+                const resInfo = document.getElementById('res-info');
+                const resIg = document.getElementById('res-ig');
 
-                const response = await fetch(`/draw?transport=${selections.transport}&type=${selections.type}&price=${selections.price}`);
-                const data = await response.json();
+                // 秀出炫酷的載入中動畫提示
+                resName.innerText = "🧠 AI 正在幫你通靈中...";
+                resInfo.innerText = "正在從幾萬家台中餐廳裡挑選最適合你心情的店...";
+                resIg.classList.add('hidden');
+                resultCard.classList.remove('hidden');
 
-                if (data.status === 'success') {
-                    document.getElementById('res-name').innerText = data.data.name;
-                    document.getElementById('res-rating').innerText = '⭐ ' + data.data.rating;
-                    document.getElementById('res-ig').href = data.data.ig_url;
-                    document.getElementById('result-card').classList.remove('hidden');
-                } else {
-                    document.getElementById('error-card').classList.remove('hidden');
+                try {
+                    // 將使用者的文字與預算發送給後端 Python 的 /draw_ai 通道
+                    const response = await fetch(`/draw_ai?prompt=${encodeURIComponent(promptInput)}&budget=${priceLimit}`);
+                    const result = await response.json();
+
+                    if (result.status === 'success') {
+                        resName.innerText = result.data.name;
+                        // 顯示餐廳基本資訊 + AI 推薦的靈魂原因！
+                        resInfo.innerHTML = `
+                            <div class="text-sm text-gray-500 font-bold mb-2">星等：⭐${result.data.rating || '5.0'}</div>
+                            <div class="bg-yellow-100 border-2 border-black p-3 rounded-xl text-xs font-black text-gray-700">
+                                💡 AI 推薦原因：${result.ai_reason}
+                            </div>
+                        `;
+                        
+                        if (result.data.ig_url && result.data.ig_url !== '#') {
+                            resIg.href = result.data.ig_url;
+                            resIg.classList.remove('hidden');
+                        } else {
+                            resIg.classList.add('hidden');
+                        }
+                    } else {
+                        resName.innerText = "😭 抽籤失敗";
+                        resInfo.innerText = result.message;
+                    }
+                } catch (error) {
+                    resName.innerText = "❌ 連線錯誤";
+                    resInfo.innerText = "伺服器好像開小差了，請稍後再試！";
                 }
             }
 
@@ -228,7 +235,6 @@ def get_home():
             function openModal() {
                 const modal = document.getElementById('add-modal');
                 modal.classList.remove('hidden');
-                // 微小延遲讓 CSS 動畫生效
                 setTimeout(() => {
                     modal.classList.remove('opacity-0');
                     document.getElementById('modal-content').classList.remove('scale-95');
@@ -240,7 +246,6 @@ def get_home():
                 const modal = document.getElementById('add-modal');
                 modal.classList.add('opacity-0');
                 document.getElementById('modal-content').classList.add('scale-95');
-                // 等待淡出動畫結束後再隱藏
                 setTimeout(() => {
                     modal.classList.add('hidden');
                 }, 300);
@@ -248,7 +253,6 @@ def get_home():
 
             // 模擬點擊儲存按鈕
             async function submitNewRestaurant() {
-                // 抓取所有輸入框的值
                 const name = document.getElementById('new-name').value;
                 const transport = document.getElementById('new-transport').value;
                 const price = document.getElementById('new-price').value;
@@ -260,17 +264,15 @@ def get_home():
                     return;
                 }
 
-                // 打包成 JSON 格式
                 const newData = { 
                     name: name, 
                     transport: transport, 
                     type: type, 
                     price: price, 
-                    rating: "5.0", // 新增的預設給 5 星好評！
+                    rating: "5.0", 
                     ig_url: ig_url 
                 };
 
-                // 透過 POST 請求發送給 Python 後端
                 const response = await fetch('/add', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -280,42 +282,37 @@ def get_home():
                 if(response.ok) {
                     alert("🎉 成功加入口袋名單！");
                     closeModal();
-                    // 清空輸入框，方便下次輸入
                     document.getElementById('new-name').value = '';
                     document.getElementById('new-ig').value = '';
                 }
             }
+
             // ─── 查看名單 Modal 控制邏輯區 ───
 
             // 1. 開啟名單並從後端抓資料
             async function openListModal() {
                 const modal = document.getElementById('list-modal');
                 const container = document.getElementById('list-container');
-                container.innerHTML = "⌛ 載入中..."; // 載入中的小提示
+                container.innerHTML = "⌛ 載入中...";
 
-                // 顯示視窗與動畫
                 modal.classList.remove('hidden');
                 setTimeout(() => {
                     modal.classList.remove('opacity-0');
                     document.getElementById('list-modal-content').classList.remove('scale-95');
                 }, 10);
 
-                // 向 Python API 要所有餐廳資料
                 const response = await fetch('/all');
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    container.innerHTML = ""; // 清空文字
+                    container.innerHTML = "";
 
-                    // 如果沒餐廳，顯示客氣的提示
                     if (result.data.length === 0) {
                         container.innerHTML = "<p class='text-gray-400 text-center py-4 font-bold text-sm'>目前名單空空如也...</p>";
                         return;
                     }
 
-                    // 🛠️ 用迴圈把每家餐廳拼成漂亮的 HTML 卡片
                     result.data.forEach(res => {
-                        // 轉換標籤文字讓畫面更好看
                         const transMap = { walk: "🚶 走路", bike: "🏍️ 騎車", car: "🚗 開車" };
                         const priceMap = { budget: "🪙 銅板", normal: "🍱 平價", luxury: "💸 大餐" };
 
@@ -335,7 +332,7 @@ def get_home():
                                 </div>
                             </div>
                         `;
-                        container.innerHTML += card; // 塞進大盒子裡
+                        container.innerHTML += card;
                     });
                 }
             }
@@ -347,21 +344,19 @@ def get_home():
                 document.getElementById('list-modal-content').classList.add('scale-95');
                 setTimeout(() => { modal.classList.add('hidden'); }, 300);
             }
-            // 👈 新增：點擊垃圾桶時發送刪除請求給 Python
+
+            // 3. 刪除請求
             async function deleteRestaurant(name) {
-                // 彈出瀏覽器內建的確認視窗，防止手誤點錯
                 if (!confirm(`確定要將【${name}】從口袋名單中移除嗎？`)) {
                     return;
                 }
 
-                // 發送 POST 請求給後端，並把餐廳名稱當作參數傳過去
                 const response = await fetch(`/delete?name=${encodeURIComponent(name)}`, {
                     method: 'POST'
                 });
                 const result = await response.json();
 
                 if (result.status === 'success') {
-                    // 刪除成功後，重新呼叫一次 openListModal() 刷新畫面名單！
                     openListModal();
                 }
             }
@@ -382,6 +377,81 @@ def draw_restaurant(transport: str, type: str, price: str):
         return {"status": "success", "data": chosen}
     else:
         return {"status": "error", "message": "No restaurant matches filters."}
+# 🤖 初始化 Gemini AI 大腦（這樣寫 100% 安全，放心傳上 GitHub）
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+genai.configure(api_key=GEMINI_KEY)
+
+@app.get("/draw_ai")
+def draw_restaurant_ai(prompt: str = "", budget: int = 300):
+    global RESTAURANT_DB
+    
+    # 1. 根據使用者的「滑條預算」進行初步過濾
+    # 對應你之前轉檔的分類：小於150算budget, 150~500算normal, 大於500算luxury
+    price_tag = "budget"
+    if budget > 500:
+        price_tag = "luxury"
+    elif budget >= 150:
+        price_tag = "normal"
+        
+    filtered = [r for r in RESTAURANT_DB if r["price"] == price_tag]
+    
+    if not filtered:
+        return {"status": "empty", "message": "在這個預算區間內，口袋名單目前沒有餐廳喔！"}
+    
+    # 2. 如果餐廳太多（像是幾萬家），全部丟給 AI 會爆掉。
+    # 我們隨機抽出 30 家當作「候選佳麗」，交給 AI 做精細挑選
+    sample_size = min(len(filtered), 30)
+    candidates = random.sample(filtered, sample_size)
+    
+    # 3. 建立給 AI 看的名冊字串
+    candidates_summary = ""
+    for idx, c in enumerate(candidates):
+        candidates_summary += f"[{idx}] 名稱: {c['name']}, 類型(僅供參考): {c['type']}, 評分: {c['rating']}星\n"
+    
+    # 4. 精心設計傳給 Gemini 的特務密令 (Prompt)
+    ai_instruction = f"""
+    你是一個幽默且專業的台中美食導遊。
+    使用者目前的心情或想吃的是："{prompt}"
+    
+    以下是我們從幾萬家台中餐廳中，幫他初步篩選出符合預算的 {sample_size} 家候選餐廳：
+    {candidates_summary}
+    
+    任務：
+    請從這份名單中，挑選出「最符合使用者此時心情或渴望」的一家餐廳。
+    如果使用者沒輸入任何字，你就憑直覺挑選名單裡看起來最棒的一家。
+    
+    請嚴格依照以下格式回覆我，不要有任何其他贅字、不要 markdown 語法：
+    選中的餐廳編號|你推薦這家店的精闢原因(限30字以內，要吸引人)
+    
+    例如：5|大冷天就是要吃這家肉羹，熱騰騰的超狂滋味直接暖到心坎裡！
+    """
+    
+    try:
+        # 5. 呼叫最新最快的 Gemini 模型
+        model = genai.GenerativeModel('gemini-2.5-flash')
+        response = model.generate_content(ai_instruction)
+        ai_reply = response.text.strip()
+        
+        # 6. 解析 AI 吐回來的答案 (例如 "5|好喝")
+        if "|" in ai_reply:
+            chosen_idx_str, reason = ai_reply.split("|", 1)
+            chosen_idx = int(chosen_idx_str.strip())
+            lucky_restaurant = candidates[chosen_idx]
+            
+            return {
+                "status": "success",
+                "data": lucky_restaurant,
+                "ai_reason": reason.strip()
+            }
+    except Exception as e:
+        print(f"AI 呼叫失敗: {e}")
+        # 如果 AI 故障或密碼不對，我們就啟動「暖心工程師備用方案」：隨機抽一家，假裝是 AI 選的
+        lucky_restaurant = random.choice(candidates)
+        return {
+            "status": "success",
+            "data": lucky_restaurant,
+            "ai_reason": "（AI大腦此時有點過載，但本機盲抽強烈推薦這家店，絕對不會讓你失望！）"
+        }
 # 👈 新增這個接收資料的通道
 @app.post("/add")
 def add_restaurant(new_res: Restaurant):
